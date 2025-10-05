@@ -30,10 +30,10 @@
 
     <!-- Header -->
     <header class="bg-white shadow-md p-4 flex justify-between items-center">
-        <div class="flex items-center space-x-2">
+        <button data-view="recorder-view" class="flex items-center space-x-2 focus:outline-none text-left">
             <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800">SpeechParrot</h1>
-        </div>
+        </button>
         <div id="user-actions" class="flex items-center space-x-4">
              <!-- User actions will be dynamically inserted here -->
         </div>
@@ -96,6 +96,19 @@
             <h2 class="text-3xl font-bold mb-6">My Transcriptions</h2>
             <div id="history-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- History cards will be dynamically inserted here -->
+            </div>
+        </div>
+
+        <!-- NEW: Details View for a single transcription -->
+        <div id="details-view" class="view">
+            <div class="bg-white p-6 rounded-lg shadow-lg max-w-2xl mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold">Transcription Details</h2>
+                    <button data-view="history-view" class="text-blue-600 hover:underline">&larr; Back to History</button>
+                </div>
+                <div id="details-content">
+                    <!-- Details will be populated here -->
+                </div>
             </div>
         </div>
 
@@ -196,6 +209,7 @@
             secondsElapsed: 0,
             authToken: localStorage.getItem('authToken'),
             user: null,
+            history: [], // NEW: To store fetched transcriptions
             currentView: 'recorder-view',
         },
 
@@ -205,13 +219,13 @@
         },
 
         // --- Initialization ---
-        init() {
+        async init() {
             console.log('App initializing...');
             this.ui.cacheDOMElements();
             this.router.setupEventListeners();
             this.handlers.setupEventListeners();
             if (this.state.authToken) {
-                this.api.fetchUserProfile();
+                await this.api.fetchUserProfile();
             } else {
                 this.ui.updateUserUI(null);
             }
@@ -235,8 +249,6 @@
                 if (body) {
                     options.body = isFormData ? body : JSON.stringify(body);
                     if(isFormData){
-                        // For FormData, the browser sets the Content-Type header automatically with the boundary.
-                        // We need to add the auth token to the headers manually if it exists.
                         const formDataHeaders = new Headers();
                         if (app.state.authToken) {
                            formDataHeaders.append('Authorization', `Bearer ${app.state.authToken}`);
@@ -252,7 +264,6 @@
                         console.error('API Error:', errorData);
                         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
                     }
-                    // Handle cases with no response body (e.g., 204 No Content)
                     const contentType = response.headers.get("content-type");
                     if (contentType && contentType.indexOf("application/json") !== -1) {
                         return await response.json();
@@ -271,7 +282,6 @@
                     app.state.user = user;
                     app.ui.updateUserUI(user);
                 } catch (error) {
-                    // Token is likely expired or invalid, log out
                     app.handlers.handleLogout();
                 }
             },
@@ -300,6 +310,7 @@
                 this.historyView = document.getElementById('history-view');
                 this.profileView = document.getElementById('profile-view');
                 this.authView = document.getElementById('auth-view');
+                this.detailsView = document.getElementById('details-view'); // NEW
                 
                 // Auth Forms & Tabs
                 this.loginForm = document.getElementById('login-form');
@@ -327,24 +338,29 @@
             },
 
             updateUserUI(user) {
-                this.userActions.innerHTML = ''; // Clear previous buttons
+                this.userActions.innerHTML = '';
                 if (user) {
-                    const profileButton = document.createElement('button');
-                    profileButton.textContent = user.email;
-                    profileButton.className = 'text-gray-600 hover:text-blue-600 font-medium';
-                    profileButton.dataset.view = 'profile-view';
+                    const transcribeButton = document.createElement('button');
+                    transcribeButton.textContent = 'Transcribe';
+                    transcribeButton.className = 'text-gray-600 hover:text-blue-600 font-medium';
+                    transcribeButton.dataset.view = 'recorder-view';
 
                     const historyButton = document.createElement('button');
                     historyButton.textContent = 'History';
                     historyButton.className = 'text-gray-600 hover:text-blue-600 font-medium';
                     historyButton.dataset.view = 'history-view';
+                    
+                    const profileButton = document.createElement('button');
+                    profileButton.textContent = user.email;
+                    profileButton.className = 'text-gray-600 hover:text-blue-600 font-medium';
+                    profileButton.dataset.view = 'profile-view';
 
                     const logoutButton = document.createElement('button');
                     logoutButton.textContent = 'Logout';
                     logoutButton.id = 'logout-button';
                     logoutButton.className = 'bg-red-500 text-white px-3 py-1 rounded-md text-sm font-semibold hover:bg-red-600';
                     
-                    this.userActions.append(historyButton, profileButton, logoutButton);
+                    this.userActions.append(transcribeButton, historyButton, profileButton, logoutButton);
                 } else {
                     const loginButton = document.createElement('button');
                     loginButton.textContent = 'Login / Sign Up';
@@ -470,7 +486,6 @@
                     app.state.isRecording = false;
                     clearInterval(app.state.timerInterval);
                     app.ui.toggleRecordingUI(false);
-                    // Stop all media tracks to turn off the mic indicator
                     app.state.mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 }
             },
@@ -496,7 +511,6 @@
             handleCopyClick(elementId) {
                 const textToCopy = document.getElementById(elementId).textContent;
                 navigator.clipboard.writeText(textToCopy).then(() => {
-                    // Maybe show a small "Copied!" notification in the future
                     console.log('Text copied to clipboard');
                 }).catch(err => {
                     console.error('Failed to copy text: ', err);
@@ -507,38 +521,36 @@
         // --- Router / View Management ---
         router: {
             setupEventListeners() {
-                // Use event delegation for dynamically added buttons
                 document.body.addEventListener('click', (event) => {
-                    // Handle view navigation
-                    if (event.target.matches('[data-view]')) {
+                    const targetButton = event.target.closest('[data-view]');
+                    if (targetButton) {
                         event.preventDefault();
-                        this.navigateTo(event.target.dataset.view);
+                        // NEW: Pass the data-id attribute to the router
+                        const viewId = targetButton.dataset.view;
+                        const data = { id: targetButton.dataset.id };
+                        this.navigateTo(viewId, data);
                     }
-                    // Handle logout
                     if (event.target.matches('#logout-button')) {
                         event.preventDefault();
                         app.handlers.handleLogout();
                     }
-                    // Handle Auth tabs
-                    if (event.target.matches('#login-tab')) {
-                        this.showAuthForm('login');
-                    }
-                    if (event.target.matches('#signup-tab')) {
-                        this.showAuthForm('signup');
-                    }
+                    if (event.target.matches('#login-tab')) { this.showAuthForm('login'); }
+                    if (event.target.matches('#signup-tab')) { this.showAuthForm('signup'); }
                 });
             },
 
-            navigateTo(viewId) {
+            // NEW: Handle optional data payload for navigation
+            navigateTo(viewId, data = {}) {
                 app.ui.hideError();
                 app.state.currentView = viewId;
                 app.ui.views.forEach(view => {
                     view.classList.toggle('active', view.id === viewId);
                 });
                 
-                // Fetch data if needed for the new view
                 if(viewId === 'history-view') this.fetchHistory();
                 if(viewId === 'profile-view') this.populateProfile();
+                // NEW: Populate details view if navigating to it with an ID
+                if(viewId === 'details-view' && data.id) this.populateDetails(data.id);
             },
 
             async fetchHistory() {
@@ -546,18 +558,56 @@
                 historyList.innerHTML = '<p>Loading history...</p>';
                 try {
                     const transcriptions = await app.api.call('/transcriptions/');
+                    app.state.history = transcriptions; // Store for later use
                     if (transcriptions && transcriptions.length > 0) {
+                        // NEW: History items are now buttons with data-id
                         historyList.innerHTML = transcriptions.map(t => `
-                            <div class="bg-white p-4 rounded-lg shadow-md">
+                            <button data-view="details-view" data-id="${t.id}" class="w-full text-left bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <p class="text-gray-600 text-sm mb-2">${new Date(t.created_at).toLocaleString()}</p>
                                 <p class="font-medium text-gray-800 truncate">${t.corrected_text}</p>
-                            </div>
+                            </button>
                         `).join('');
                     } else {
                         historyList.innerHTML = '<p>No transcriptions found.</p>';
                     }
                 } catch (error) {
                      historyList.innerHTML = '<p class="text-red-500">Could not load history.</p>';
+                }
+            },
+            
+            // NEW: Function to populate the details view
+            populateDetails(transcriptionId) {
+                const id = parseInt(transcriptionId, 10);
+                const transcription = app.state.history.find(t => t.id === id);
+                const detailsContent = document.getElementById('details-content');
+
+                if (transcription) {
+                    detailsContent.innerHTML = `
+                        <div class="space-y-6">
+                            <div>
+                                <h3 class="font-semibold text-lg mb-2 text-gray-800">Corrected Text</h3>
+                                <div class="bg-gray-50 p-4 rounded-md border">
+                                    <p class="text-gray-700 whitespace-pre-wrap">${transcription.corrected_text}</p>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-lg mb-2 text-gray-800">Original Transcription</h3>
+                                <div class="bg-gray-50 p-4 rounded-md border">
+                                    <p class="text-gray-700 whitespace-pre-wrap">${transcription.original_text}</p>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-lg mb-2 text-gray-800">Original Audio</h3>
+                                <p class="text-sm text-gray-500">Note: Audio download is a mock feature.</p>
+                                <a href="${transcription.audio_url}" download="transcription_${transcription.id}.webm" class="mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                    Download Audio
+                                    <svg class="ml-2 -mr-1 h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    detailsContent.innerHTML = '<p class="text-red-500">Could not find transcription details.</p>';
                 }
             },
             
