@@ -1,0 +1,228 @@
+import uvicorn
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import os
+from pydantic import BaseModel
+from typing import List, Optional
+import datetime
+import jwt # PyJWT library for handling tokens
+from dotenv import load_dotenv
+
+# --- Load Environment Variables ---
+load_dotenv()
+
+# --- Configuration ---
+# Securely load keys from the environment. Your .env file should look like:
+# OPENAI_API_KEY="sk-..."
+# GEMINI_API_KEY="..."
+# SECRET_KEY="..."
+# OPENAI_PROJECT_ID="..." (Optional, for sk-proj- keys)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY", "your-default-secret-key")
+OPENAI_PROJECT_ID = os.getenv("OPENAI_PROJECT_ID")
+ALGORITHM = "HS256"
+
+# --- Mock Database ---
+fake_users_db = {}
+fake_transcriptions_db = {}
+transcription_id_counter = 1
+
+# --- Pydantic Models (Data Schemas) ---
+class User(BaseModel):
+    username: str
+    user_type: str
+    transcription_count: int
+    last_transcription_date: Optional[datetime.datetime] = None
+
+class UserInDB(User):
+    hashed_password: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+class Transcription(BaseModel):
+    id: int
+    username: str
+    original_text: str
+    corrected_text: str
+    audio_url: str
+    created_at: datetime.datetime
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="SpeechParrot API",
+    description="API for audio transcription, correction, and user management.",
+    version="2.1.3" # Version bump for the final fix
+)
+
+# --- CORS Middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Helper Functions ---
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.datetime.utcnow() + datetime.timedelta(days=7)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# --- Mock Security/Dependency Injection ---
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    if authorization is None:
+        raise HTTPException(status_code=41, detail="Authorization header missing")
+    try:
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None or username not in fake_users_db:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return fake_users_db[username]
+    except (jwt.PyJWTError, IndexError):
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+
+# --- API Endpoints ---
+@app.get("/")
+def read_root():
+    return {"status": "SpeechParrot API is running"}
+
+# --- Authentication Endpoints ---
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+@app.post("/auth/signup")
+async def signup(user: UserCreate):
+    if user.username in fake_users_db:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    hashed_password = user.password + "notreallyhashed"
+    new_user = UserInDB(
+        username=user.username,
+        hashed_password=hashed_password,
+        user_type='free',
+        transcription_count=0
+    )
+    fake_users_db[user.username] = new_user.dict()
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+@app.post("/auth/login")
+async def login(form_data: UserLogin):
+    user = fake_users_db.get(form_data.username)
+    if not user or (form_data.password + "notreallyhashed") != user['hashed_password']:
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    access_token = create_access_token(data={"sub": form_data.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# --- User Endpoints ---
+@app.get("/users/me", response_model=User)
+async def read_users_me(current_user: dict = Depends(get_current_user)):
+    return current_user
+
+# --- Transcription Endpoints ---
+@app.post("/transcriptions/")
+async def process_audio(
+    audio_file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None)
+):
+    global transcription_id_counter
+    username = "guest"
+    user_data = None
+
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            user_data = await get_current_user(authorization)
+            username = user_data['username']
+        except HTTPException:
+            pass
+
+    if user_data:
+        if user_data['user_type'] == 'free' and user_data['transcription_count'] >= 10:
+            raise HTTPException(status_code=403, detail="Free user limit reached.")
+        if user_data['user_type'] == 'paid' and user_data['transcription_count'] >= 1000:
+             raise HTTPException(status_code=403, detail="Monthly subscription limit reached.")
+
+    audio_bytes = await audio_file.read()
+    mock_audio_url = f"/audio/{username}_{transcription_id_counter}.webm"
+
+    transcribed_text = ""
+    corrected_text = ""
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            # 1. Call OpenAI Whisper API
+            whisper_url = "https://api.openai.com/v1/audio/transcriptions"
+            headers = {
+                'Authorization': f'Bearer {OPENAI_API_KEY}'
+            }
+            if OPENAI_PROJECT_ID:
+                headers['OpenAI-Project'] = OPENAI_PROJECT_ID
+            
+            files = {'file': (audio_file.filename, audio_bytes, audio_file.content_type)}
+            data = {'model': 'whisper-1'}
+            
+            whisper_response = await client.post(whisper_url, headers=headers, files=files, data=data)
+            whisper_response.raise_for_status()
+            transcribed_text = whisper_response.json()['text']
+
+            # 2. Call Google Gemini API
+            if transcribed_text:
+                # Using the confirmed available model from your API key
+                gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+                prompt = f"Please correct the grammar and structure of the following text, but keep the original meaning. Do not add any preamble or explanation, just provide the corrected text:\n\n'{transcribed_text}'"
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                
+                gemini_response = await client.post(gemini_url, json=payload)
+                gemini_response.raise_for_status()
+                corrected_text = gemini_response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.json().get('error', {}).get('message', 'Unknown Error')
+            print(f"API Error: {error_detail}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"An external API error occurred: {error_detail}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            raise HTTPException(status_code=500, detail="An unexpected error occurred while processing the audio.")
+
+    if user_data:
+        new_transcription = Transcription(
+            id=transcription_id_counter,
+            username=username,
+            original_text=transcribed_text,
+            corrected_text=corrected_text,
+            audio_url=mock_audio_url,
+            created_at=datetime.datetime.utcnow()
+        )
+        fake_transcriptions_db[transcription_id_counter] = new_transcription.dict()
+        transcription_id_counter += 1
+        fake_users_db[username]['transcription_count'] += 1
+
+    return {
+        "original_transcription": transcribed_text,
+        "corrected_text": corrected_text,
+        "is_guest": (user_data is None)
+    }
+
+@app.get("/transcriptions/", response_model=List[Transcription])
+async def get_transcription_history(current_user: dict = Depends(get_current_user)):
+    user_transcriptions = [
+        t for t in fake_transcriptions_db.values() if t['username'] == current_user['username']
+    ]
+    return sorted(user_transcriptions, key=lambda x: x['created_at'], reverse=True)
+
+
+# --- How to run this file ---
+# ... (Instructions remain the same)
+
