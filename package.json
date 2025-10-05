@@ -1,0 +1,32 @@
+{
+  "name": "speechparrot",
+  "version": "1.0.0",
+  "description": "A mobile-first progressive web app for audio transcription with original and corrected versions.",
+  "main": "index.js",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "install": "npm install --workspaces",
+    "dev": "npm run dev --workspaces",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ad1tyaD/SpeechParrot.git"
+  },
+  "keywords": [
+    "react",
+    "speech-recognition",
+    "pwa",
+    "audio",
+    "transcription"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Ad1tyaD/SpeechParrot/issues"
+  },
+  "homepage": "https://github.com/Ad1tyaD/SpeechParrot#readme"
+}
