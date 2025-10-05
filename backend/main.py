@@ -3,7 +3,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr # Import EmailStr for email validation
 from typing import List, Optional
 import datetime
 import jwt # PyJWT library for handling tokens
@@ -30,8 +30,9 @@ fake_transcriptions_db = {}
 transcription_id_counter = 1
 
 # --- Pydantic Models (Data Schemas) ---
+# --- CHANGED: Using email instead of username ---
 class User(BaseModel):
-    username: str
+    email: EmailStr
     user_type: str
     transcription_count: int
     last_transcription_date: Optional[datetime.datetime] = None
@@ -40,11 +41,12 @@ class UserInDB(User):
     hashed_password: str
 
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    email: Optional[EmailStr] = None
 
+# --- CHANGED: Using email instead of username ---
 class Transcription(BaseModel):
     id: int
-    username: str
+    email: EmailStr
     original_text: str
     corrected_text: str
     audio_url: str
@@ -54,7 +56,7 @@ class Transcription(BaseModel):
 app = FastAPI(
     title="SpeechParrot API",
     description="API for audio transcription, correction, and user management.",
-    version="2.1.3" # Version bump for the final fix
+    version="2.2.0" # Version bump for email-based auth
 )
 
 # --- CORS Middleware ---
@@ -75,16 +77,17 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 # --- Mock Security/Dependency Injection ---
+# --- CHANGED: Decodes email from token ---
 async def get_current_user(authorization: Optional[str] = Header(None)):
     if authorization is None:
-        raise HTTPException(status_code=41, detail="Authorization header missing")
+        raise HTTPException(status_code=401, detail="Authorization header missing")
     try:
         token = authorization.split(" ")[1]
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None or username not in fake_users_db:
+        email: str = payload.get("sub")
+        if email is None or email not in fake_users_db:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return fake_users_db[username]
+        return fake_users_db[email]
     except (jwt.PyJWTError, IndexError):
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
@@ -95,35 +98,42 @@ def read_root():
     return {"status": "SpeechParrot API is running"}
 
 # --- Authentication Endpoints ---
+# --- NEW: Includes password confirmation ---
 class UserCreate(BaseModel):
-    username: str
+    email: EmailStr
     password: str
+    confirm_password: str
 
+# --- CHANGED: Logic for email signup and password check ---
 @app.post("/auth/signup")
 async def signup(user: UserCreate):
-    if user.username in fake_users_db:
-        raise HTTPException(status_code=400, detail="Username already registered")
+    if user.password != user.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    if user.email in fake_users_db:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
     hashed_password = user.password + "notreallyhashed"
     new_user = UserInDB(
-        username=user.username,
+        email=user.email,
         hashed_password=hashed_password,
         user_type='free',
         transcription_count=0
     )
-    fake_users_db[user.username] = new_user.dict()
-    access_token = create_access_token(data={"sub": user.username})
+    fake_users_db[user.email] = new_user.dict()
+    access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
+# --- CHANGED: Login with email ---
 class UserLogin(BaseModel):
-    username: str
+    email: EmailStr
     password: str
 
 @app.post("/auth/login")
 async def login(form_data: UserLogin):
-    user = fake_users_db.get(form_data.username)
+    user = fake_users_db.get(form_data.email)
     if not user or (form_data.password + "notreallyhashed") != user['hashed_password']:
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
-    access_token = create_access_token(data={"sub": form_data.username})
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    access_token = create_access_token(data={"sub": form_data.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
 # --- User Endpoints ---
@@ -138,13 +148,14 @@ async def process_audio(
     authorization: Optional[str] = Header(None)
 ):
     global transcription_id_counter
-    username = "guest"
+    # --- CHANGED: Identifying user by email ---
+    email = "guest"
     user_data = None
 
     if authorization and authorization.startswith("Bearer "):
         try:
             user_data = await get_current_user(authorization)
-            username = user_data['username']
+            email = user_data['email']
         except HTTPException:
             pass
 
@@ -155,7 +166,7 @@ async def process_audio(
              raise HTTPException(status_code=403, detail="Monthly subscription limit reached.")
 
     audio_bytes = await audio_file.read()
-    mock_audio_url = f"/audio/{username}_{transcription_id_counter}.webm"
+    mock_audio_url = f"/audio/{email.split('@')[0]}_{transcription_id_counter}.webm"
 
     transcribed_text = ""
     corrected_text = ""
@@ -179,7 +190,6 @@ async def process_audio(
 
             # 2. Call Google Gemini API
             if transcribed_text:
-                # Using the confirmed available model from your API key
                 gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
                 prompt = f"Please correct the grammar and structure of the following text, but keep the original meaning. Do not add any preamble or explanation, just provide the corrected text:\n\n'{transcribed_text}'"
                 payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -199,7 +209,7 @@ async def process_audio(
     if user_data:
         new_transcription = Transcription(
             id=transcription_id_counter,
-            username=username,
+            email=email,
             original_text=transcribed_text,
             corrected_text=corrected_text,
             audio_url=mock_audio_url,
@@ -207,7 +217,7 @@ async def process_audio(
         )
         fake_transcriptions_db[transcription_id_counter] = new_transcription.dict()
         transcription_id_counter += 1
-        fake_users_db[username]['transcription_count'] += 1
+        fake_users_db[email]['transcription_count'] += 1
 
     return {
         "original_transcription": transcribed_text,
@@ -218,7 +228,7 @@ async def process_audio(
 @app.get("/transcriptions/", response_model=List[Transcription])
 async def get_transcription_history(current_user: dict = Depends(get_current_user)):
     user_transcriptions = [
-        t for t in fake_transcriptions_db.values() if t['username'] == current_user['username']
+        t for t in fake_transcriptions_db.values() if t['email'] == current_user['email']
     ]
     return sorted(user_transcriptions, key=lambda x: x['created_at'], reverse=True)
 
