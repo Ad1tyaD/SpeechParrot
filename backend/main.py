@@ -63,7 +63,7 @@ class Transcription(BaseModel):
 app = FastAPI(
     title="SpeechParrot API",
     description="API for audio transcription, correction, and user management.",
-    version="2.3.0" # Version bump for payment integration
+    version="2.3.1" # Version bump for webhook fix
 )
 
 # --- CORS Middleware ---
@@ -102,7 +102,6 @@ def read_root():
     return {"status": "SpeechParrot API is running"}
 
 # --- Authentication Endpoints ---
-# ... (existing /auth/signup and /auth/login endpoints are unchanged) ...
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -143,7 +142,25 @@ async def login(form_data: UserLogin):
 async def read_users_me(current_user: dict = Depends(get_current_user)):
     return current_user
 
-# --- NEW: Payment Endpoints ---
+# --- Admin Dashboard Endpoint ---
+@app.get("/admin/dashboard")
+async def get_admin_dashboard(secret: str):
+    """
+    A simple protected endpoint to view the in-memory database.
+    Access it by going to /admin/dashboard?secret=YOUR_SECRET_KEY
+    """
+    # Load the admin secret from environment variables for security
+    ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "default-admin-secret")
+
+    if secret != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="Incorrect secret key")
+
+    return {
+        "users": fake_users_db,
+        "transcriptions": fake_transcriptions_db
+    }
+
+# --- Payment Endpoints ---
 @app.post("/payments/create-order")
 async def create_payment_order(current_user: dict = Depends(get_current_user)):
     user_email = current_user['email']
@@ -153,12 +170,12 @@ async def create_payment_order(current_user: dict = Depends(get_current_user)):
         orders_api = OrdersApi(api_client=Cashfree.get_api_client())
         create_order_request = CreateOrderRequest(
             order_id=order_id,
-            order_amount=299.00,  # Example amount: 299.00
+            order_amount=299.00,
             order_currency="INR",
             customer_details=OrderCustomerDetails(
                 customer_id=user_email,
                 customer_email=user_email,
-                customer_phone="9999999999" # Placeholder phone number
+                customer_phone="9999999999"
             ),
             order_meta={"return_url": f"http://speechparrot.purelementlabs.com/?order_id={{order_id}}"}
         )
@@ -168,26 +185,31 @@ async def create_payment_order(current_user: dict = Depends(get_current_user)):
         print(f"Cashfree API Error: {e}")
         raise HTTPException(status_code=500, detail="Could not create payment order.")
 
+# --- EDITED: Made webhook more robust for testing ---
 @app.post("/payments/webhook")
 async def payment_webhook(request: Request):
     # In a real app, you would verify the webhook signature from Cashfree
-    # For now, we'll trust the data for demonstration purposes
-    data = await request.json()
-    print("Received webhook:", data)
-    
-    if data.get("data", {}).get("order", {}).get("order_status") == "PAID":
-        customer_email = data.get("data", {}).get("customer_details", {}).get("customer_email")
-        if customer_email in fake_users_db:
-            # Upgrade user to 'paid' and reset their count
-            fake_users_db[customer_email]['user_type'] = 'paid'
-            fake_users_db[customer_email]['transcription_count'] = 0
-            print(f"Successfully upgraded user: {customer_email}")
-    
-    return {"status": "ok"}
+    try:
+        data = await request.json()
+        print("Received webhook:", data)
+        
+        if data.get("data", {}).get("order", {}).get("order_status") == "PAID":
+            customer_email = data.get("data", {}).get("customer_details", {}).get("customer_email")
+            if customer_email in fake_users_db:
+                # Upgrade user to 'paid' and reset their count
+                fake_users_db[customer_email]['user_type'] = 'paid'
+                fake_users_db[customer_email]['transcription_count'] = 0
+                print(f"Successfully upgraded user: {customer_email}")
+        
+        return {"status": "ok"}
+    except Exception:
+        # This handles the initial test webhook from Cashfree which may not have a valid body.
+        # We simply acknowledge it with a success status code so it can be saved.
+        print("Received a webhook test request or a request with no JSON body.")
+        return {"status": "webhook_test_acknowledged"}
 
 
 # --- Transcription Endpoints ---
-# ... (existing /transcriptions/ endpoints are unchanged) ...
 @app.post("/transcriptions/")
 async def process_audio(
     audio_file: UploadFile = File(...),

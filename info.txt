@@ -6,3 +6,6 @@ http://127.0.0.1:8000
 
 to activate virtual environment in MacOS:
 source venv/bin/activate
+
+to freeze the requirement:
+pip freeze > requirements.txt

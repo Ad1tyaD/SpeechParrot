@@ -5,18 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SpeechParrot - AI Transcription</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- NEW: Cashfree JS SDK -->
+    <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
     <link rel="apple-touch-icon" href="icon-192.png">
     <style>
         body { font-family: 'Inter', sans-serif; }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        .pulse-ring {
-            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
-        }
-        .animate-pulse-ring {
-            animation: pulse-ring-animation 1.5s infinite;
-        }
+        .pulse-ring { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+        .animate-pulse-ring { animation: pulse-ring-animation 1.5s infinite; }
         @keyframes pulse-ring-animation {
             0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
             70% { box-shadow: 0 0 0 20px rgba(59, 130, 246, 0); }
@@ -34,15 +32,12 @@
             <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800">SpeechParrot</h1>
         </button>
-        <div id="user-actions" class="flex items-center space-x-4">
-             <!-- User actions will be dynamically inserted here -->
-        </div>
+        <div id="user-actions" class="flex items-center space-x-4"></div>
     </header>
 
     <!-- Main Content -->
     <main class="flex-grow container mx-auto p-4 md:p-6">
         
-        <!-- Recorder View -->
         <div id="recorder-view" class="view active">
             <div class="bg-white p-6 rounded-lg shadow-lg max-w-2xl mx-auto">
                 <h2 class="text-2xl font-semibold text-center mb-4">Record & Transcribe</h2>
@@ -55,35 +50,28 @@
                 </div>
                 <div id="timer" class="text-center text-xl font-mono text-gray-700 mb-6">00:00</div>
                 
-                <!-- Loading Spinner -->
                 <div id="loading-spinner" class="hidden text-center my-4">
                     <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <p class="mt-2 text-gray-600">Transcribing and correcting...</p>
+                    <p class="mt-2 text-gray-600">Processing...</p>
                 </div>
 
-                <!-- Transcription Output -->
                 <div id="transcription-output" class="hidden">
                     <div>
                         <h3 class="font-semibold text-lg mb-2 text-gray-800">Corrected Text</h3>
                         <div class="relative bg-gray-50 p-4 rounded-md border">
                             <p id="corrected-text" class="text-gray-700 whitespace-pre-wrap"></p>
-                            <button id="copy-corrected" class="absolute top-2 right-2 p-1 bg-gray-200 hover:bg-gray-300 rounded-md">
-                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                            </button>
+                            <button id="copy-corrected" class="absolute top-2 right-2 p-1 bg-gray-200 hover:bg-gray-300 rounded-md"><svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg></button>
                         </div>
                     </div>
                     <div class="mt-4">
                         <h3 class="font-semibold text-lg mb-2 text-gray-800">Original Transcription</h3>
                          <div class="relative bg-gray-50 p-4 rounded-md border">
                             <p id="original-text" class="text-gray-700 whitespace-pre-wrap"></p>
-                            <button id="copy-original" class="absolute top-2 right-2 p-1 bg-gray-200 hover:bg-gray-300 rounded-md">
-                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                            </button>
+                            <button id="copy-original" class="absolute top-2 right-2 p-1 bg-gray-200 hover:bg-gray-300 rounded-md"><svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg></button>
                         </div>
                     </div>
                 </div>
 
-                 <!-- Error Message Display -->
                 <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mt-4" role="alert">
                     <strong class="font-bold">Error:</strong>
                     <span class="block sm:inline" id="error-text"></span>
@@ -91,28 +79,21 @@
             </div>
         </div>
 
-        <!-- History View -->
         <div id="history-view" class="view">
             <h2 class="text-3xl font-bold mb-6">My Transcriptions</h2>
-            <div id="history-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- History cards will be dynamically inserted here -->
-            </div>
+            <div id="history-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </div>
 
-        <!-- NEW: Details View for a single transcription -->
         <div id="details-view" class="view">
             <div class="bg-white p-6 rounded-lg shadow-lg max-w-2xl mx-auto">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-2xl font-semibold">Transcription Details</h2>
                     <button data-view="history-view" class="text-blue-600 hover:underline">&larr; Back to History</button>
                 </div>
-                <div id="details-content">
-                    <!-- Details will be populated here -->
-                </div>
+                <div id="details-content"></div>
             </div>
         </div>
 
-        <!-- Profile View -->
         <div id="profile-view" class="view">
             <div class="bg-white p-6 rounded-lg shadow-lg max-w-lg mx-auto">
                 <h2 class="text-3xl font-bold mb-6">My Profile</h2>
@@ -129,67 +110,70 @@
                         <label class="block text-sm font-medium text-gray-700">Transcriptions Used</label>
                         <p id="profile-transcription-count" class="mt-1 text-lg text-gray-900"></p>
                     </div>
+                    <div id="upgrade-section" class="pt-4 border-t border-gray-200 hidden">
+                        <button data-view="upgrade-view" class="w-full bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors">
+                            Upgrade to Pro
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Login / Signup View -->
         <div id="auth-view" class="view">
             <div class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg">
-                <!-- Tabs -->
                 <div class="mb-6 border-b border-gray-200">
                     <nav class="-mb-px flex space-x-6" aria-label="Tabs">
                         <button id="login-tab" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg border-blue-600 text-blue-700">Log In</button>
                         <button id="signup-tab" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Sign Up</button>
                     </nav>
                 </div>
-
-                <!-- Login Form -->
                 <form id="login-form" class="space-y-6">
                     <div>
                         <label for="login-email" class="block text-sm font-medium text-gray-700">Email address</label>
-                        <div class="mt-1">
-                            <input id="login-email" name="email" type="email" autocomplete="email" required class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
+                        <input id="login-email" name="email" type="email" autocomplete="email" required class="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
                     <div>
                         <label for="login-password" class="block text-sm font-medium text-gray-700">Password</label>
-                        <div class="mt-1">
-                            <input id="login-password" name="password" type="password" autocomplete="current-password" required class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
+                        <input id="login-password" name="password" type="password" autocomplete="current-password" required class="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
                     <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Log in</button>
                 </form>
-
-                <!-- Signup Form -->
                 <form id="signup-form" class="space-y-6 hidden">
                     <div>
                         <label for="signup-email" class="block text-sm font-medium text-gray-700">Email address</label>
-                        <div class="mt-1">
-                            <input id="signup-email" name="email" type="email" autocomplete="email" required class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
+                        <input id="signup-email" name="email" type="email" autocomplete="email" required class="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
                     <div>
                         <label for="signup-password" class="block text-sm font-medium text-gray-700">Password</label>
-                        <div class="mt-1">
-                            <input id="signup-password" name="password" type="password" required class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
+                        <input id="signup-password" name="password" type="password" required class="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
                     <div>
                         <label for="signup-confirm-password" class="block text-sm font-medium text-gray-700">Confirm Password</label>
-                        <div class="mt-1">
-                            <input id="signup-confirm-password" name="confirm_password" type="password" required class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
+                        <input id="signup-confirm-password" name="confirm_password" type="password" required class="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
                     <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Create account</button>
                 </form>
             </div>
         </div>
 
+        <!-- NEW: Upgrade View -->
+        <div id="upgrade-view" class="view">
+            <div class="bg-white p-8 rounded-lg shadow-lg max-w-md mx-auto text-center">
+                <h2 class="text-3xl font-bold mb-4">Go Pro!</h2>
+                <p class="text-gray-600 mb-6">Unlock 1000 monthly transcriptions and premium features with a one-time payment.</p>
+                <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-8">
+                    <p class="text-4xl font-extrabold text-gray-900">₹299</p>
+                    <p class="text-gray-500 font-medium">One-time Payment</p>
+                </div>
+                <button id="pay-button" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors text-lg">
+                    Proceed to Payment
+                </button>
+            </div>
+        </div>
+        
     </main>
     
     <script>
-    // --- Service Worker and PWA Setup ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('service-worker.js')
@@ -198,9 +182,7 @@
         });
     }
 
-    // --- Core Application Logic ---
     const app = {
-        // --- State Management ---
         state: {
             isRecording: false,
             mediaRecorder: null,
@@ -209,21 +191,21 @@
             secondsElapsed: 0,
             authToken: localStorage.getItem('authToken'),
             user: null,
-            history: [], // NEW: To store fetched transcriptions
+            history: [],
             currentView: 'recorder-view',
+            cashfree: null,
         },
-
-        // --- API Configuration ---
         config: {
             apiBaseUrl: 'https://speechparrot-api.onrender.com',
         },
-
-        // --- Initialization ---
         async init() {
             console.log('App initializing...');
             this.ui.cacheDOMElements();
             this.router.setupEventListeners();
             this.handlers.setupEventListeners();
+
+            this.state.cashfree = new Cashfree();
+
             if (this.state.authToken) {
                 await this.api.fetchUserProfile();
             } else {
@@ -231,14 +213,12 @@
             }
             this.router.navigateTo('recorder-view');
         },
-
-        // --- API Calls ---
         api: {
             async call(endpoint, method = 'GET', body = null, isFormData = false) {
                 const url = `${app.config.apiBaseUrl}${endpoint}`;
                 const headers = {};
                 
-                if (app.state.authToken && !isFormData) {
+                if (app.state.authToken) {
                     headers['Authorization'] = `Bearer ${app.state.authToken}`;
                 }
                  if (!isFormData) {
@@ -275,10 +255,9 @@
                     throw error;
                 }
             },
-
             async fetchUserProfile() {
                 try {
-                    const user = await this.call('/users/me');
+                    const user = await this.api.call('/users/me');
                     app.state.user = user;
                     app.ui.updateUserUI(user);
                 } catch (error) {
@@ -286,8 +265,6 @@
                 }
             },
         },
-
-        // --- UI Management ---
         ui: {
             cacheDOMElements() {
                 this.recordButton = document.getElementById('record-button');
@@ -304,41 +281,41 @@
                 this.errorText = document.getElementById('error-text');
                 this.userActions = document.getElementById('user-actions');
                 
-                // Views
                 this.views = document.querySelectorAll('.view');
                 this.recorderView = document.getElementById('recorder-view');
                 this.historyView = document.getElementById('history-view');
                 this.profileView = document.getElementById('profile-view');
                 this.authView = document.getElementById('auth-view');
-                this.detailsView = document.getElementById('details-view'); // NEW
+                this.detailsView = document.getElementById('details-view');
                 
-                // Auth Forms & Tabs
                 this.loginForm = document.getElementById('login-form');
                 this.signupForm = document.getElementById('signup-form');
                 this.loginTab = document.getElementById('login-tab');
                 this.signupTab = document.getElementById('signup-tab');
+                
+                this.upgradeSection = document.getElementById('upgrade-section');
+                this.payButton = document.getElementById('pay-button');
+                this.upgradeView = document.getElementById('upgrade-view');
             },
-
             showError(message) {
                 this.errorText.textContent = message;
                 this.errorMessage.classList.remove('hidden');
                 this.loadingSpinner.classList.add('hidden');
             },
-
             hideError() {
                 this.errorMessage.classList.add('hidden');
             },
-            
             showLoading(show) {
                 this.loadingSpinner.classList.toggle('hidden', !show);
+                this.loadingSpinner.firstElementChild.nextElementSibling.textContent = "Processing...";
                 if (show) {
                     this.transcriptionOutput.classList.add('hidden');
                     this.hideError();
                 }
             },
-
             updateUserUI(user) {
                 this.userActions.innerHTML = '';
+                this.upgradeSection.classList.add('hidden');
                 if (user) {
                     const transcribeButton = document.createElement('button');
                     transcribeButton.textContent = 'Transcribe';
@@ -361,6 +338,10 @@
                     logoutButton.className = 'bg-red-500 text-white px-3 py-1 rounded-md text-sm font-semibold hover:bg-red-600';
                     
                     this.userActions.append(transcribeButton, historyButton, profileButton, logoutButton);
+                    
+                    if (user.user_type === 'free') {
+                        this.upgradeSection.classList.remove('hidden');
+                    }
                 } else {
                     const loginButton = document.createElement('button');
                     loginButton.textContent = 'Login / Sign Up';
@@ -369,13 +350,11 @@
                     this.userActions.appendChild(loginButton);
                 }
             },
-
             updateTimer() {
                 const minutes = String(Math.floor(app.state.secondsElapsed / 60)).padStart(2, '0');
                 const seconds = String(app.state.secondsElapsed % 60).padStart(2, '0');
                 this.timer.textContent = `${minutes}:${seconds}`;
             },
-
             toggleRecordingUI(isRecording) {
                 this.micIcon.classList.toggle('hidden', isRecording);
                 this.stopIcon.classList.toggle('hidden', !isRecording);
@@ -384,8 +363,6 @@
                 this.recordButton.classList.toggle('animate-pulse-ring', isRecording);
             },
         },
-        
-        // --- Event Handlers ---
         handlers: {
             setupEventListeners() {
                 app.ui.recordButton.addEventListener('click', () => this.handleRecordButtonClick());
@@ -393,8 +370,34 @@
                 app.ui.copyCorrected.addEventListener('click', () => this.handleCopyClick('corrected-text'));
                 app.ui.loginForm.addEventListener('submit', (e) => this.handleLogin(e));
                 app.ui.signupForm.addEventListener('submit', (e) => this.handleSignup(e));
+                app.ui.payButton.addEventListener('click', () => this.handlePayment());
             },
+            async handlePayment() {
+                app.ui.loadingSpinner.firstElementChild.nextElementSibling.textContent = "Redirecting to payment...";
+                app.ui.showLoading(true);
+                try {
+                    const order = await app.api.call('/payments/create-order', 'POST');
+                    const sessionId = order.payment_session_id;
 
+                    app.state.cashfree.checkout({
+                        paymentSessionId: sessionId
+                    }).then((result) => {
+                        if (result.error) {
+                            app.ui.showError("Payment failed: " + result.error.message);
+                        }
+                        if (result.paymentDetails) {
+                            alert("Payment Successful! Your account has been upgraded.");
+                            app.api.fetchUserProfile(); 
+                            app.router.navigateTo('profile-view');
+                        }
+                    });
+
+                } catch (error) {
+                    console.error("Payment initiation failed:", error);
+                } finally {
+                   // Don't hide loading here as Cashfree takes over the screen
+                }
+            },
             async handleLogin(event) {
                 event.preventDefault();
                 app.ui.hideError();
@@ -410,7 +413,6 @@
                     console.error("Login failed:", error);
                 }
             },
-
             async handleSignup(event) {
                 event.preventDefault();
                 app.ui.hideError();
@@ -422,7 +424,6 @@
                     app.ui.showError("Passwords do not match.");
                     return;
                 }
-
                 try {
                     const data = await app.api.call('/auth/signup', 'POST', { email, password, confirm_password });
                     app.state.authToken = data.access_token;
@@ -433,7 +434,6 @@
                     console.error("Signup failed:", error);
                 }
             },
-            
             handleLogout() {
                 app.state.authToken = null;
                 app.state.user = null;
@@ -441,45 +441,31 @@
                 app.ui.updateUserUI(null);
                 app.router.navigateTo('recorder-view');
             },
-
             handleRecordButtonClick() {
-                if (app.state.isRecording) {
-                    this.stopRecording();
-                } else {
-                    this.startRecording();
-                }
+                if (app.state.isRecording) { this.stopRecording(); } 
+                else { this.startRecording(); }
             },
-
             async startRecording() {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     app.state.isRecording = true;
                     app.state.audioChunks = [];
                     app.ui.toggleRecordingUI(true);
-
                     app.state.mediaRecorder = new MediaRecorder(stream);
-                    app.state.mediaRecorder.ondataavailable = event => {
-                        app.state.audioChunks.push(event.data);
-                    };
+                    app.state.mediaRecorder.ondataavailable = event => app.state.audioChunks.push(event.data);
                     app.state.mediaRecorder.onstop = () => this.handleTranscription();
                     app.state.mediaRecorder.start();
-
                     app.state.secondsElapsed = 0;
                     app.ui.updateTimer();
                     app.state.timerInterval = setInterval(() => {
                         app.state.secondsElapsed++;
                         app.ui.updateTimer();
-                        if (app.state.secondsElapsed >= 120) {
-                            this.stopRecording();
-                        }
+                        if (app.state.secondsElapsed >= 120) { this.stopRecording(); }
                     }, 1000);
-
                 } catch (err) {
-                    console.error('Error accessing microphone:', err);
                     app.ui.showError('Could not access the microphone. Please grant permission.');
                 }
             },
-            
             stopRecording() {
                 if (app.state.mediaRecorder && app.state.isRecording) {
                     app.state.mediaRecorder.stop();
@@ -489,13 +475,11 @@
                     app.state.mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 }
             },
-
             async handleTranscription() {
                 app.ui.showLoading(true);
                 const audioBlob = new Blob(app.state.audioChunks, { type: 'audio/webm' });
                 const formData = new FormData();
                 formData.append('audio_file', audioBlob, 'recording.webm');
-                
                 try {
                     const result = await app.api.call('/transcriptions/', 'POST', formData, true);
                     app.ui.originalText.textContent = result.original_transcription;
@@ -507,60 +491,40 @@
                     app.ui.showLoading(false);
                 }
             },
-            
             handleCopyClick(elementId) {
-                const textToCopy = document.getElementById(elementId).textContent;
-                navigator.clipboard.writeText(textToCopy).then(() => {
-                    console.log('Text copied to clipboard');
-                }).catch(err => {
-                    console.error('Failed to copy text: ', err);
-                });
+                navigator.clipboard.writeText(document.getElementById(elementId).textContent);
             }
         },
-
-        // --- Router / View Management ---
         router: {
             setupEventListeners() {
                 document.body.addEventListener('click', (event) => {
                     const targetButton = event.target.closest('[data-view]');
                     if (targetButton) {
                         event.preventDefault();
-                        // NEW: Pass the data-id attribute to the router
                         const viewId = targetButton.dataset.view;
                         const data = { id: targetButton.dataset.id };
                         this.navigateTo(viewId, data);
                     }
-                    if (event.target.matches('#logout-button')) {
-                        event.preventDefault();
-                        app.handlers.handleLogout();
-                    }
+                    if (event.target.matches('#logout-button')) { app.handlers.handleLogout(); }
                     if (event.target.matches('#login-tab')) { this.showAuthForm('login'); }
                     if (event.target.matches('#signup-tab')) { this.showAuthForm('signup'); }
                 });
             },
-
-            // NEW: Handle optional data payload for navigation
             navigateTo(viewId, data = {}) {
                 app.ui.hideError();
                 app.state.currentView = viewId;
-                app.ui.views.forEach(view => {
-                    view.classList.toggle('active', view.id === viewId);
-                });
-                
+                app.ui.views.forEach(view => view.classList.toggle('active', view.id === viewId));
                 if(viewId === 'history-view') this.fetchHistory();
                 if(viewId === 'profile-view') this.populateProfile();
-                // NEW: Populate details view if navigating to it with an ID
                 if(viewId === 'details-view' && data.id) this.populateDetails(data.id);
             },
-
             async fetchHistory() {
                 const historyList = document.getElementById('history-list');
                 historyList.innerHTML = '<p>Loading history...</p>';
                 try {
                     const transcriptions = await app.api.call('/transcriptions/');
-                    app.state.history = transcriptions; // Store for later use
+                    app.state.history = transcriptions;
                     if (transcriptions && transcriptions.length > 0) {
-                        // NEW: History items are now buttons with data-id
                         historyList.innerHTML = transcriptions.map(t => `
                             <button data-view="details-view" data-id="${t.id}" class="w-full text-left bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <p class="text-gray-600 text-sm mb-2">${new Date(t.created_at).toLocaleString()}</p>
@@ -574,55 +538,43 @@
                      historyList.innerHTML = '<p class="text-red-500">Could not load history.</p>';
                 }
             },
-            
-            // NEW: Function to populate the details view
             populateDetails(transcriptionId) {
                 const id = parseInt(transcriptionId, 10);
                 const transcription = app.state.history.find(t => t.id === id);
                 const detailsContent = document.getElementById('details-content');
-
                 if (transcription) {
                     detailsContent.innerHTML = `
                         <div class="space-y-6">
                             <div>
                                 <h3 class="font-semibold text-lg mb-2 text-gray-800">Corrected Text</h3>
-                                <div class="bg-gray-50 p-4 rounded-md border">
-                                    <p class="text-gray-700 whitespace-pre-wrap">${transcription.corrected_text}</p>
-                                </div>
+                                <div class="bg-gray-50 p-4 rounded-md border"><p class="text-gray-700 whitespace-pre-wrap">${transcription.corrected_text}</p></div>
                             </div>
                             <div>
                                 <h3 class="font-semibold text-lg mb-2 text-gray-800">Original Transcription</h3>
-                                <div class="bg-gray-50 p-4 rounded-md border">
-                                    <p class="text-gray-700 whitespace-pre-wrap">${transcription.original_text}</p>
-                                </div>
+                                <div class="bg-gray-50 p-4 rounded-md border"><p class="text-gray-700 whitespace-pre-wrap">${transcription.original_text}</p></div>
                             </div>
                             <div>
                                 <h3 class="font-semibold text-lg mb-2 text-gray-800">Original Audio</h3>
-                                <p class="text-sm text-gray-500">Note: Audio download is a mock feature.</p>
                                 <a href="${transcription.audio_url}" download="transcription_${transcription.id}.webm" class="mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                                     Download Audio
                                     <svg class="ml-2 -mr-1 h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                                 </a>
                             </div>
-                        </div>
-                    `;
+                        </div>`;
                 } else {
                     detailsContent.innerHTML = '<p class="text-red-500">Could not find transcription details.</p>';
                 }
             },
-            
             populateProfile() {
                 if (app.state.user) {
                     document.getElementById('profile-email').textContent = app.state.user.email;
                     document.getElementById('profile-user-type').textContent = app.state.user.user_type;
-                    
                     let countText = app.state.user.transcription_count;
                     if (app.state.user.user_type === 'free') countText += ' / 10';
                     if (app.state.user.user_type === 'paid') countText += ' / 1000';
                     document.getElementById('profile-transcription-count').textContent = countText;
                 }
             },
-
             showAuthForm(formToShow) {
                 if (formToShow === 'login') {
                     app.ui.loginForm.classList.remove('hidden');
@@ -643,7 +595,6 @@
         }
     };
     
-    // --- Start the App ---
     document.addEventListener('DOMContentLoaded', () => app.init());
     </script>
 </body>
