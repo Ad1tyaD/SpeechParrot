@@ -1,28 +1,37 @@
 import uvicorn
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
-from pydantic import BaseModel, EmailStr # Import EmailStr for email validation
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 import datetime
-import jwt # PyJWT library for handling tokens
+import jwt
 from dotenv import load_dotenv
+
+# --- NEW: Import Cashfree PG ---
+from cashfree_pg.api_client import Cashfree
+from cashfree_pg.api.orders_api import OrdersApi
+from cashfree_pg.models.create_order_request import CreateOrderRequest
+from cashfree_pg.models.order_customer_details import OrderCustomerDetails
 
 # --- Load Environment Variables ---
 load_dotenv()
 
 # --- Configuration ---
-# Securely load keys from the environment. Your .env file should look like:
-# OPENAI_API_KEY="sk-..."
-# GEMINI_API_KEY="..."
-# SECRET_KEY="..."
-# OPENAI_PROJECT_ID="..." (Optional, for sk-proj- keys)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SECRET_KEY = os.getenv("SECRET_KEY", "your-default-secret-key")
 OPENAI_PROJECT_ID = os.getenv("OPENAI_PROJECT_ID")
 ALGORITHM = "HS256"
+
+# --- NEW: Cashfree Configuration ---
+CASHFREE_APP_ID = os.getenv("CASHFREE_APP_ID")
+CASHFREE_SECRET_KEY = os.getenv("CASHFREE_SECRET_KEY")
+# Use 'SANDBOX' for testing, 'PRODUCTION' for live payments
+Cashfree.XClientId = CASHFREE_APP_ID
+Cashfree.XClientSecret = CASHFREE_SECRET_KEY
+Cashfree.XEnvironment = Cashfree.SANDBOX 
 
 # --- Mock Database ---
 fake_users_db = {}
@@ -30,7 +39,6 @@ fake_transcriptions_db = {}
 transcription_id_counter = 1
 
 # --- Pydantic Models (Data Schemas) ---
-# --- CHANGED: Using email instead of username ---
 class User(BaseModel):
     email: EmailStr
     user_type: str
@@ -43,7 +51,6 @@ class UserInDB(User):
 class TokenData(BaseModel):
     email: Optional[EmailStr] = None
 
-# --- CHANGED: Using email instead of username ---
 class Transcription(BaseModel):
     id: int
     email: EmailStr
@@ -56,7 +63,7 @@ class Transcription(BaseModel):
 app = FastAPI(
     title="SpeechParrot API",
     description="API for audio transcription, correction, and user management.",
-    version="2.2.0" # Version bump for email-based auth
+    version="2.3.0" # Version bump for payment integration
 )
 
 # --- CORS Middleware ---
@@ -68,7 +75,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Helper Functions ---
+# --- Helper Functions & Security ---
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.datetime.utcnow() + datetime.timedelta(days=7)
@@ -76,8 +83,6 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# --- Mock Security/Dependency Injection ---
-# --- CHANGED: Decodes email from token ---
 async def get_current_user(authorization: Optional[str] = Header(None)):
     if authorization is None:
         raise HTTPException(status_code=401, detail="Authorization header missing")
@@ -91,20 +96,18 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     except (jwt.PyJWTError, IndexError):
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
-
 # --- API Endpoints ---
 @app.get("/")
 def read_root():
     return {"status": "SpeechParrot API is running"}
 
 # --- Authentication Endpoints ---
-# --- NEW: Includes password confirmation ---
+# ... (existing /auth/signup and /auth/login endpoints are unchanged) ...
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     confirm_password: str
 
-# --- CHANGED: Logic for email signup and password check ---
 @app.post("/auth/signup")
 async def signup(user: UserCreate):
     if user.password != user.confirm_password:
@@ -123,7 +126,6 @@ async def signup(user: UserCreate):
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
-# --- CHANGED: Login with email ---
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
@@ -141,14 +143,57 @@ async def login(form_data: UserLogin):
 async def read_users_me(current_user: dict = Depends(get_current_user)):
     return current_user
 
+# --- NEW: Payment Endpoints ---
+@app.post("/payments/create-order")
+async def create_payment_order(current_user: dict = Depends(get_current_user)):
+    user_email = current_user['email']
+    order_id = f"order_{int(datetime.datetime.now().timestamp())}_{user_email}"
+
+    try:
+        orders_api = OrdersApi(api_client=Cashfree.get_api_client())
+        create_order_request = CreateOrderRequest(
+            order_id=order_id,
+            order_amount=299.00,  # Example amount: 299.00
+            order_currency="INR",
+            customer_details=OrderCustomerDetails(
+                customer_id=user_email,
+                customer_email=user_email,
+                customer_phone="9999999999" # Placeholder phone number
+            ),
+            order_meta={"return_url": f"http://speechparrot.purelementlabs.com/?order_id={{order_id}}"}
+        )
+        api_response = orders_api.create_order(x_api_version="2022-09-01", create_order_request=create_order_request)
+        return {"payment_session_id": api_response.payment_session_id}
+    except Exception as e:
+        print(f"Cashfree API Error: {e}")
+        raise HTTPException(status_code=500, detail="Could not create payment order.")
+
+@app.post("/payments/webhook")
+async def payment_webhook(request: Request):
+    # In a real app, you would verify the webhook signature from Cashfree
+    # For now, we'll trust the data for demonstration purposes
+    data = await request.json()
+    print("Received webhook:", data)
+    
+    if data.get("data", {}).get("order", {}).get("order_status") == "PAID":
+        customer_email = data.get("data", {}).get("customer_details", {}).get("customer_email")
+        if customer_email in fake_users_db:
+            # Upgrade user to 'paid' and reset their count
+            fake_users_db[customer_email]['user_type'] = 'paid'
+            fake_users_db[customer_email]['transcription_count'] = 0
+            print(f"Successfully upgraded user: {customer_email}")
+    
+    return {"status": "ok"}
+
+
 # --- Transcription Endpoints ---
+# ... (existing /transcriptions/ endpoints are unchanged) ...
 @app.post("/transcriptions/")
 async def process_audio(
     audio_file: UploadFile = File(...),
     authorization: Optional[str] = Header(None)
 ):
     global transcription_id_counter
-    # --- CHANGED: Identifying user by email ---
     email = "guest"
     user_data = None
 
@@ -167,17 +212,13 @@ async def process_audio(
 
     audio_bytes = await audio_file.read()
     mock_audio_url = f"/audio/{email.split('@')[0]}_{transcription_id_counter}.webm"
-
     transcribed_text = ""
     corrected_text = ""
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
-            # 1. Call OpenAI Whisper API
             whisper_url = "https://api.openai.com/v1/audio/transcriptions"
-            headers = {
-                'Authorization': f'Bearer {OPENAI_API_KEY}'
-            }
+            headers = {'Authorization': f'Bearer {OPENAI_API_KEY}'}
             if OPENAI_PROJECT_ID:
                 headers['OpenAI-Project'] = OPENAI_PROJECT_ID
             
@@ -188,7 +229,6 @@ async def process_audio(
             whisper_response.raise_for_status()
             transcribed_text = whisper_response.json()['text']
 
-            # 2. Call Google Gemini API
             if transcribed_text:
                 gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
                 prompt = f"Please correct the grammar and structure of the following text, but keep the original meaning. Do not add any preamble or explanation, just provide the corrected text:\n\n'{transcribed_text}'"
@@ -197,13 +237,10 @@ async def process_audio(
                 gemini_response = await client.post(gemini_url, json=payload)
                 gemini_response.raise_for_status()
                 corrected_text = gemini_response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-
         except httpx.HTTPStatusError as e:
             error_detail = e.response.json().get('error', {}).get('message', 'Unknown Error')
-            print(f"API Error: {error_detail}")
             raise HTTPException(status_code=e.response.status_code, detail=f"An external API error occurred: {error_detail}")
         except Exception as e:
-            print(f"An unexpected error occurred: {e}")
             raise HTTPException(status_code=500, detail="An unexpected error occurred while processing the audio.")
 
     if user_data:
@@ -219,20 +256,10 @@ async def process_audio(
         transcription_id_counter += 1
         fake_users_db[email]['transcription_count'] += 1
 
-    return {
-        "original_transcription": transcribed_text,
-        "corrected_text": corrected_text,
-        "is_guest": (user_data is None)
-    }
+    return {"original_transcription": transcribed_text, "corrected_text": corrected_text, "is_guest": (user_data is None)}
 
 @app.get("/transcriptions/", response_model=List[Transcription])
 async def get_transcription_history(current_user: dict = Depends(get_current_user)):
-    user_transcriptions = [
-        t for t in fake_transcriptions_db.values() if t['email'] == current_user['email']
-    ]
+    user_transcriptions = [t for t in fake_transcriptions_db.values() if t['email'] == current_user['email']]
     return sorted(user_transcriptions, key=lambda x: x['created_at'], reverse=True)
-
-
-# --- How to run this file ---
-# ... (Instructions remain the same)
 

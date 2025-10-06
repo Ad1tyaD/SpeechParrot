@@ -2,3 +2,7 @@ To run backend server
 uvicorn main:app --reload
 
 http://127.0.0.1:8000
+
+
+to activate virtual environment in MacOS:
+source venv/bin/activate
